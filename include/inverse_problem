@@ -1,0 +1,79 @@
+#ifndef MAIN_CPP_INVERSE_PROBLEM
+#define MAIN_CPP_INVERSE_PROBLEM
+
+#include "data_structures"
+
+namespace InverseProblem {
+    class IPProblem {
+    public:
+        IPProblem() = default;
+        void init(double eps) { eps_ = eps; }
+        static std::vector<Data::Ray> get_candidate(Data::Edge &edge, unsigned rank, int num) {
+            std::vector<Data::Ray> candidate;
+            unsigned cnt_step = 1u << rank;
+            bool first_tube = true;
+            for (auto &tube : edge.tubes) {
+                aiw::Vec<3> st_r = edge.rays[0].get().st_r;
+                aiw::Vec<3> p_a = get_st_p_ray_removed_edge(edge, tube), p_b = edge.rays[0].get().st_p, p_c = edge.rays[1].get().st_p;
+                aiw::Vec<3> step_ab = (p_b - p_a) / (static_cast<int>(cnt_step)), step_ac = (p_c - p_a) / (static_cast<int>(cnt_step));
+                aiw::Vec<3> pnt_ab = p_a, pnt_ac = p_a;
+                unsigned n = first_tube ? (1u << rank) + 1 : 1u << rank;
+                for (int i = 1; i < static_cast<int>(n); ++i) {
+                    pnt_ab += step_ab; pnt_ac += step_ac;
+                    aiw::Vec<3> step_layer = (pnt_ac - pnt_ab) / i;
+                    int bias = i % 2 ? 1 : 2;
+                    for (int j = (i + 1) % 2; j <= i; j += bias) { candidate.emplace_back(st_r, pnt_ab + j * step_layer, num); }
+                }
+                first_tube = false;
+            }
+            return candidate;
+        }
+        void choosing_best_ray(std::vector<Data::Ray> &rays, Data::Edge &edge, std::pair<bool, Data::Ray> &best_ray, bool init_best_ray) const {
+            double best_norm;
+            aiw::Vec<3> true_r = (edge.rays[0].get().r + edge.rays[1].get().r) / 2.;
+            aiw::Vec<3> y = get_r_ray_removed_edge(edge, edge.tubes[0]);
+            if (edge.tubes.size() > 1) { y -= get_r_ray_removed_edge(edge, edge.tubes[1]); } else { y -= true_r; }
+            if (init_best_ray) { best_norm = get_norm_l1(best_ray.second.r - true_r, edge.rays[0].get().r - edge.rays[1].get().r, y); }
+            for (auto &ray : rays) {
+                double norm = get_norm_l1(ray.r - true_r, edge.rays[0].get().r - edge.rays[1].get().r, y);
+                if (init_best_ray) {
+                    if (norm < eps_) {
+                        best_ray.first = true;
+                        best_ray.second = ray;
+                        best_norm = norm;
+                        break;
+                    } else if (norm < best_norm) {
+                        best_ray.second = ray;
+                        best_norm = norm;
+                    }
+                } else {
+                    best_norm = norm;
+                    init_best_ray = true;
+                    best_ray.second = ray;
+                    if (norm < eps_) {
+                        best_ray.first = true;
+                        break;
+                    }
+                }
+            }
+        }
+    private:
+        static aiw::Vec<3> get_st_p_ray_removed_edge(const Data::Edge &edge, const Data::Tube &tube) {
+            aiw::Vec<3> st_p;
+            for (auto &ray : tube.rays) { if (ray.get().num != edge.rays[0].get().num && ray.get().num != edge.rays[1].get().num) { st_p = ray.get().st_p; } }
+            return st_p;
+        }
+        static aiw::Vec<3> get_r_ray_removed_edge(const Data::Edge &edge, const Data::Tube &tube) {
+            aiw::Vec<3> r;
+            for (auto &ray : tube.rays) { if (ray.get().num != edge.rays[0].get().num && ray.get().num != edge.rays[1].get().num) { r = ray.get().r; } }
+            return r;
+        }
+        static double get_norm_l1(aiw::Vec<3> ray, aiw::Vec<3> x, aiw::Vec<3> y) {
+            return std::abs((ray * x)) / x.abs() + std::abs((ray * y)) / y.abs();
+        }
+    private:
+        double eps_;
+    };
+}
+
+#endif //MAIN_CPP_INVERSE_PROBLEM

@@ -1,0 +1,43 @@
+#ifndef COURSEWORK_TESTING
+#define COURSEWORK_TESTING
+
+#include <cmath>
+#include <tuple>
+#include <list>
+
+#include "aiwlib/vec"
+#include "aiwlib/matr"
+#include "data_structures"
+
+
+namespace Testing {
+    class VField final: public Data::IVField {
+    public:
+        VField(aiw::Vec<3> &r0, double v0, double &delta_v, double sigma): r0(r0), v0(v0), delta_v(delta_v), sigma(sigma) {}
+        double operator()(const aiw::Vec<3> &r) const final { return v0 - delta_v * std::exp(-(r - r0).abs2() / (2 * sigma * sigma)); }
+        [[nodiscard]] aiw::Vec<3> grad(const aiw::Vec<3> &r) const final {
+            double sigma2 = sigma * sigma;
+            return delta_v / sigma2 * std::exp(-(r - r0).abs2() / (2 * sigma2)) * (r - r0);
+        }
+    private:
+        aiw::Vec<3> r0;
+        double v0, delta_v, sigma;
+    };
+
+    auto init_rays(int ray_cnt, double v_0) {
+        std::list<Data::Ray> rays;
+        aiw::Vec<3> r_center{0., 0., 0.};
+        double max_direct_angle = M_PI;
+        double step_angle = max_direct_angle / ray_cnt;
+        double radius = 1.;
+        int idx = 0;
+        for (double cur_direct_angle = 0; cur_direct_angle < max_direct_angle; cur_direct_angle += step_angle) {
+            aiw::Vec<3> r{radius * std::cos(cur_direct_angle), 0., radius * std::sin(cur_direct_angle)};
+            rays.emplace_back(r_center, r / v_0, idx);
+            ++idx;
+        }
+        return std::make_tuple(rays);
+    }
+}
+
+#endif //COURSEWORK_TESTING
