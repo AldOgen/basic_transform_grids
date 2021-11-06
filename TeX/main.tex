@@ -29,22 +29,34 @@
 
 \section{Постановка задачи}
 Рассмотрим исходную систему бихарактеристик луча в переменных $\bfv{r}$ и $\bfv{n}$:
-\begin{equation} \label{eq1}
+\begin{equation} \label{eq:1}
 \begin{cases}
 \dd{\bfv{r}} = v(\bfv{r})\,\bfv{n}\\
 \dd{\bfv{n}} = \dvp{\bfv{n}}{\bfv{n}}{\dv{\bfv{r}}}\\
 \end{cases}
 \end{equation}
 с начальными условиями $\bfv{r}|_{\tau=0} = \bfv{r}_0$ и $\bfv{n}|_{\tau=0} = \bfv{n}_0$\\\\
+Из физических соображений $\bfv{n}$ --- единичная нормаль к волновому фронту $\Rightarrow \ \|\bfv{n}\| = 1$.\\\\
+Воспользуемся тождеством Лагранжа для двойного векторного произведения $\dvp{\bfv{n}}{\bfv{n}}{\dv{\bfv{r}}}$:
+\begin{equation} \label{eq:2}
+    \dvp{\bfv{n}}{\bfv{n}}{\dv{\bfv{r}}} = \bfv{n}\,\dprod{\bfv{n}}{\dv{\bfv{r}}} - \dv{\bfv{r}}\,\dprod{\bfv{n}}{\bfv{n}} = \bfv{n}\,\dprod{\bfv{n}}{\dv{\bfv{r}}} - \dv{\bfv{r}}
+\end{equation}\\
+Подставляя \eqref{eq:2} в \eqref{eq:1}, получим:\\
+\begin{equation} \label{eq:3}
+\begin{cases}
+\dd{\bfv{r}} = v(\bfv{r})\,\bfv{n}\\
+\dd{\bfv{n}} =  \bfv{n}\,\dprod{\bfv{n}}{\dv{\bfv{r}}} - \dv{\bfv{r}}\\
+\end{cases}
+\end{equation}\\
 Рассмотрим малое возмущение для $\bfv{r}$ и $\bfv{n}$:
 \begin{align*}
 \bfv{r_1} &= \bfv{r} + \dr   &   \bfv{n_1} &= \bfv{n} + \dr
 \end{align*}
-Будем считать, что в линейном приближении система \eqref{eq1} верна для переменных $(\bfv{r_1}\,\bfv{n_1})$, то есть: 
-\begin{equation} \label{eq2}
+Будем считать, что в линейном приближении система \eqref{eq:3} верна для переменных $(\bfv{r_1}\,\bfv{n_1})$, то есть: 
+\begin{equation} \label{eq:4}
 \begin{cases}
 \dd{\bfv{r_1}} = v(\bfv{r_1})\,\bfv{n_1} + \om{\|\dr\| + \|\dn\|}\\
-\dd{\bfv{n_1}} = \dvp{\bfv{n_1}}{\bfv{n_1}}{\dv{\bfv{r_1}}} + \om{\|\dr\| + \|\dn\|}\\
+\dd{\bfv{n_1}} = \bfv{n_1}\,\dprod{\bfv{n_1}}{\dv{\bfv{r_1}}} - \dv{\bfv{r_1}} + \om{\|\dr\| + \|\dn\|}\\
 \end{cases}
 \end{equation}\\
 Разложим в ряд Тейлора функции $v(\bfv{r})$ и $\dv{\bfv{r}}$:
@@ -52,34 +64,47 @@
 v(\bfv{r_1}) = v(\bfv{r}) + \dprod{\dv{\bfv{r}}}{\dr} + \om{\|\dr\|}\\ 
 \dv{\bfv{r_1}} = \dv{\bfv{r}} + \ddv{\bfv{r}}\,\dr + \om{\|\dr\|}
 \end{gather*}
-Подставим полученные разложения в систему \eqref{eq2}, воспользовавшись формулой Лагранжа для двойного векторного произведения: 
-\begin{equation} \label{eq3}
+Подставим полученные разложения в систему \eqref{eq:4}, воспользовавшись формулой Лагранжа для двойного векторного произведения: 
+\begin{equation} \label{eq:5}
 \begin{cases}
 \dd{\bfv{r}} + \dd{\dr} = v(\bfv{r})\,\bfv{n} + \dprod{\dv{\bfv{r}}}{\dr}\,\bfv{n} + v(\bfv{r})\,\dn + \om{\|\dr\| + \|\dn\|}\\
-\dd{\bfv{n}} + \dd{\dn} = \dvp{\bfv{n}}{\bfv{n}}{\dv{\bfv{r}}} + \dvp{\bfv{n}}{\bfv{n}}{\ddv{\bfv{r}}} \ +\\
-\qquad+ \dprod{\dv{\bfv{r}}}{\dn}\,\bfv{n} - 2\,\dprod{\bfv{n}}{\dn}\,\dv{\bfv{r}} + \dprod{\bfv{n}}{\dv{\bfv{r}}}\,\dn + \om{\|\dr\| + \|\dn\|}\\
+\dd{\bfv{n}} + \dd{\dn} = \bfv{n}\,\dprod{\bfv{n}}{\dv{\bfv{r}}} - \dv{\bfv{r}} + \dn\,\dprod{\bfv{n}}{\dv{\bfv{r}}} + \bfv{n}\,\dprod{\dn}{\dv{\bfv{r}}} + \\ 
+\qquad + \bfv{n}\,\dprod{\bfv{n}}{\ddv{\bfv{r}}\dr} - \ddv{\bfv{r}}\dr + \om{\|\dr\| + \|\dn\|}\\
 \end{cases}
 \end{equation}\\
-Используя равенства системы \eqref{eq1}, перепишем \eqref{eq3} в следующем виде:
+Используя равенства системы \eqref{eq:1}, перепишем \eqref{eq:5} в следующем виде:
 \begin{equation*}
 \begin{cases}
 \dd{\dr} = \dprod{\dv{\bfv{r}}}{\dr}\,\bfv{n} + v(\bfv{r})\,\dn + \om{\|\dr\| + \|\dn\|}\\
-\dd{\dn} = \dvp{\bfv{n}}{\bfv{n}}{\ddv{\bfv{r}}\,\dr} + \dprod{\dv{\bfv{r}}}{\dn}\,\bfv{n} - 2\,\dprod{\bfv{n}}{\dn}\,\dv{\bfv{r}} + \dprod{\bfv{n}}{\dv{\bfv{r}}}\,\dn + \om{\|\dr\| + \|\dn\|}
+\dd{\dn} = \dn\,\dprod{\bfv{n}}{\dv{\bfv{r}}} + \bfv{n}\,\dprod{\dn}{\dv{\bfv{r}}} + \bfv{n}\,\dprod{\bfv{n}}{\ddv{\bfv{r}}\dr} - \ddv{\bfv{r}}\dr + \om{\|\dr\| + \|\dn\|}
 \end{cases}
 \end{equation*}
 Что эквивалентно следующей записи:
-\begin{equation} \label{eq4}
+\begin{equation} \label{eq:6}
 \begin{cases}
-\dd{\dr} = \T{\bfv{n}}\dv{\bfv{r}}\,\dr + v(\bfv{r})\,\dn + \om{\|\dr\| + \|\dn\|}\\
-\dd{\dn} = \T{\bfv{n}}\bfv{n}\,\ddv{\bfv{r}}\,\dr - \dprod{\bfv{n}}{\bfv{n}}\ddv{\bfv{r}}\,\dr + \T{\bfv{n}}\dv{\bfv{r}}\,\dn \ - \\ \qquad -\ 2\,\T{\dv{\bfv{r}}}\bfv{n}\,\dn + \dprod{\bfv{n}}{\dv{\bfv{r}}}\,\dn + \om{\|\dr\| + \|\dn\|}
+\dd{\dr} = \bfv{n}\T{\dv{\bfv{r}}}\,\dr + v(\bfv{r})\,\dn + \om{\|\dr\| + \|\dn\|}\\
+\dd{\dn} = \dprod{\bfv{n}}{\dv{\bfv{r}}}\,\dn + \bfv{n}\T{\dv{\bfv{r}}}\,\dn + \bfv{n}\T{\bfv{n}}\,\ddv{\bfv{r}}\,\dr - \ddv{\bfv{r}}\,\dr + \om{\|\dr\| + \|\dn\|}
 \end{cases}
 \end{equation}\\
-В силу сферичности фронта положим $\dr = \matr{P}(\tau)\,\dn_0$ и $\dn = \matr{Q}(\tau)\,\dn_0$ и оставим только линейные $\delta$-члены. В результате система \eqref{eq4} примет вид:
-\begin{equation} \label{eq5}
+В силу сферичности фронта положим $\dr = \matr{P}(\tau)\,\dn_0$ и $\dn = \matr{Q}(\tau)\,\dn_0$ и оставим только линейные $\delta$-члены. Сгруппируем по $\dn_0$, и в результате система \eqref{eq:6} примет вид:
+\begin{equation} \label{eq:7}
 \begin{cases}
-\dd{\matr{P}} = \T{\bfv{n}}\dv{\bfv{r}}\,\matr{P} + v(\bfv{r})\,\matr{Q}\\
-\dd{\matr{Q}} = (\T{\bfv{n}}\bfv{n}\,\ddv{\bfv{r}} - \dprod{\bfv{n}}{\bfv{n}}\,\ddv{\bfv{r}})\,\matr{P} + (\T{\bfv{n}}\dv{\bfv{r}} - 2\,\T{\dv{\bfv{r}}}\bfv{n} + \dprod{\bfv{n}}{\dv{\bfv{r}}}\,\matr{I})\,\matr{Q} 
+\dd{\matr{P}} = \bfv{n}\T{\dv{\bfv{r}}}\,\matr{P} + v(\bfv{r})\,\matr{Q}\\
+\dd{\matr{Q}} = (\bfv{n}\T{\bfv{n}} - \matr{I})\,\ddv{\bfv{r}}\,\matr{P} + (\bfv{n}\T{\dv{\bfv{r}}} + \dprod{\bfv{n}}{\dv{\bfv{r}}}\,\matr{I})\,\matr{Q} 
 \end{cases}
 \end{equation}
-Начальные условия: $\matr{P}(0) = \matr{\O}$ и $\matr{Q}(0) = \matr{I}$
+с начальными условиями: $\matr{P}(0) = \matr{\O}$ и $\matr{Q}(0) = \matr{I}$\\\\
+\newpage
+В матричном виде \eqref{eq:7}:
+\begin{equation} \label{eq:8}
+\begin{cases}
+\dd{\matr{P}} = \matr{M}_{11}(\tau)\,\matr{P} + \matr{M}_{12}(\tau)\,\matr{Q}\\
+\dd{\matr{Q}} = \matr{M}_{21}(\tau)\,\matr{P} + \matr{M}_{22}(\tau)\,\matr{Q} 
+\end{cases}, \ \text{где}
+\end{equation}\\
+\begin{align*} 
+&\matr{M}_{11}(\tau) = \bfv{n}(\tau)\T{\dv{\bfv{r}(\tau)}}&\matr{M}_{12}(\tau) = v(\bfv{r}(\tau))\,\matr{I}\\
+&\matr{M}_{21}(\tau) = (\bfv{n}(\tau)\T{\bfv{n}(\tau)} - \matr{I})\,\ddv{\bfv{r}(\tau)}&\matr{M}_{22}(\tau) = \bfv{n}(\tau)\T{\dv{\bfv{r}(\tau)}} + \dprod{\bfv{n}(\tau)}{\dv{\bfv{r}(\tau)}}\,\matr{I}
+\end{align*}
+
 \end{document}
