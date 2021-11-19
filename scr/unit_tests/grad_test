@@ -1,0 +1,134 @@
+#ifndef MAIN_CPP_GRAD_TEST_
+#define MAIN_CPP_GRAD_TEST_
+#include <array>
+#include <list>
+#include <aiwlib/matr>
+#include <aiwlib/vec>
+
+#include "../include/data_structures"
+
+namespace UnitTests {
+    class TestVField final: public Data::IVField {
+    public:
+        TestVField(double a, double b): a(a), b(b) {}
+        double operator()(const aiw::Vec<3> &r) const final { return a + b * r[2]; }
+        [[nodiscard]] aiw::Vec<3> grad(const aiw::Vec<3> &r) const final {
+            aiw::Vec<3> dr(0., 0., 1.);
+            return b * dr;
+        }
+        [[nodiscard]] aiw::Matr<3> hess(const aiw::Vec<3> &r) const final {
+            aiw::Matr<3> hess;
+            hess.fill();
+            return hess;
+        }
+    private:
+        double a, b;
+    };
+
+    class LoggerGrad {
+    public:
+        LoggerGrad() = default;
+        void init(int N, std::string_view directory) {
+            for (int idx = 1; idx <= N; ++idx) {
+                std::stringstream name;
+                name << directory << "/err_t=" << idx << ".log";
+                logging_.emplace_back(name.str());
+            }
+            num_epoch_ = 0;
+            initial = true;
+        }
+        void set_event(const std::vector<std::vector<double>> &errors) {
+            int i = 0;
+            for (auto &errs : errors) {
+                logging_[num_epoch_] << i;
+                for (auto err : errs) { logging_[num_epoch_] << " " << err; }
+                logging_[num_epoch_] << "\n";
+                ++i;
+            }
+            ++num_epoch_;
+        }
+        ~LoggerGrad() {
+            for (auto &fo : logging_) { fo.close(); }
+        }
+    private:
+        std::vector<std::ofstream> logging_;
+        int num_epoch_ = 0;
+        bool initial = false;
+    };
+
+    aiw::Vec<3> get_orthogonal_vector(const aiw::Vec<3> &vec) {
+        double first_coord = vec[0] != 0.0 ? -vec[0]: 1.;
+        aiw::Vec<3> ort_vec {first_coord, vec[1], vec[2]};
+        ort_vec -= (ort_vec * vec) * vec;
+        return ort_vec / ort_vec.abs();
+    }
+
+    template<int N = 10> class GradTest {
+    public:
+        GradTest() = default;
+        void init(double h, int t_max, const std::array<double, N> &norm_dn0) {
+            h_ = h;
+            t_max_ = t_max;
+            norm_dn0_ = norm_dn0;
+        }
+        void run(std::list<Data::Ray> &rays, const Data::IVField &v, LoggerGrad &logging) {
+            rays_for_test_ = std::move(get_offset_rays(rays));
+            for (int t = 0; t < t_max_; ++t) {
+                std::cout << t << std::endl;
+                std::vector<std::vector<double>> errors;
+                for (auto &vec_rays : rays_for_test_) {
+                    for (auto &ray : vec_rays) {
+                        ray_tracing_step(ray, h_, v);
+                    }
+                    errors.push_back(get_calc_errors(vec_rays));
+                }
+                logging.set_event(errors);
+            }
+        }
+    private:
+        static inline void ray_tracing_step(Data::Ray &ray, double h, const Data::IVField &v) {
+            double cur_v = v(ray.r); aiw::Vec<3> cur_v_grad = v.grad(ray.r); aiw::Matr<3> cur_v_hess =  v.hess(ray.r);
+            aiw::Matr<3> M11 = get_M11(ray.n, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n, cur_v_hess), M22 = get_M22(ray.n, cur_v_grad);
+            ray.P += h * (M11 * ray.P + M12 * ray.Q), ray.Q += h * (M21 * ray.P + M22 * ray.Q);
+            aiw::Vec<3> k1r = cur_v * ray.n, k1n = (cur_v_grad * ray.n) * ray.n - cur_v_grad;
+            cur_v = v(ray.r + 0.5 * k1r * h), cur_v_grad = v.grad(ray.r + 0.5 * k1r * h);
+            aiw::Vec<3> k2r = cur_v * (ray.n + 0.5 * k1n * h), k2n = (cur_v_grad * (ray.n + 0.5 * k1n * h)) * (ray.n + 0.5 * k1n * h) - cur_v_grad;
+            cur_v = v(ray.r + 0.5 * k2r * h), cur_v_grad = v.grad(ray.r + 0.5 * k2r * h);
+            aiw::Vec<3> k3r = cur_v * (ray.n + 0.5 * k2n * h), k3n = (cur_v_grad * (ray.n + 0.5 * k2n * h)) * (ray.n + 0.5 * k2n * h) - cur_v_grad;
+            cur_v = v(ray.r + k3r * h), cur_v_grad = v.grad(ray.r + k3r * h);
+            aiw::Vec<3> k4r = cur_v * (ray.n + k3n * h), k4n = (cur_v_grad * (ray.n + k3n * h)) * (ray.n + k3n * h) - cur_v_grad;;
+            ray.r += h / 6 * (k1r + 2 * k2r + 2 * k3r + k4r); ray.n += h / 6 * (k1n + 2 * k2n + 2 * k3n + k4n);
+        }
+        static inline aiw::Matr<3> get_M11(const aiw::Vec<3> &n, const aiw::Vec<3> &v_gradr) { return n ^ v_gradr; }
+        static inline aiw::Matr<3> get_M12(const double vr) { return aiw::Matr<3>{vr}; }
+        static inline aiw::Matr<3> get_M21(const aiw::Vec<3> &n, const aiw::Matr<3> &v_hessr) { return ((n ^ n) - aiw::Matr<3>{1.}) * v_hessr; }
+        static inline aiw::Matr<3> get_M22(const aiw::Vec<3> &n, const aiw::Vec<3> &v_gradr) { return (n ^ v_gradr) + aiw::Matr<3>{(n * v_gradr)}; }
+        [[nodiscard]] std::list<std::vector<Data::Ray>> get_offset_rays(const std::list<Data::Ray> &rays) const {
+            std::list<std::vector<Data::Ray>> offset_rays;
+            for (auto &ray : rays) {
+                std::vector<Data::Ray> offset_cur_ray;
+                offset_cur_ray.reserve(N + 1);
+                offset_cur_ray.emplace_back(ray.r, ray.n, -1);
+                auto ort_n = get_orthogonal_vector(ray.st_n);
+                for (int i = 1; i < N + 1; ++i) { offset_cur_ray.emplace_back(ray.r, ray.n + (norm_dn0_[i - 1] * ort_n), -1); }
+                offset_rays.push_back(std::move(offset_cur_ray));
+            }
+            return offset_rays;
+        }
+        [[nodiscard]] std::vector<double> get_calc_errors(const std::vector<Data::Ray> &rays) const {
+            std::vector<double> errors(N);
+            auto ort_n = get_orthogonal_vector(rays[0].st_n);
+            for (int i = 1; i < N + 1; ++i) {
+                errors[i - 1] = (rays[i].r - (rays[0].r + rays[0].P * (norm_dn0_[i - 1] * ort_n))).abs2();
+            }
+            return errors;
+        }
+    private:
+        double h_{};
+        int t_max_{};
+        std::list<std::vector<Data::Ray>> rays_for_test_;
+        std::array<double, N> norm_dn0_;
+    };
+}
+
+#endif //MAIN_CPP_GRAD_TEST_

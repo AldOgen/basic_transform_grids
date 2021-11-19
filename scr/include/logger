@@ -1,0 +1,107 @@
+#ifndef COURSEWORK_LOGGER
+#define COURSEWORK_LOGGER
+
+#include <algorithm>
+#include <string_view>
+#include <vector>
+
+#include "data_structures"
+
+namespace Logger {
+    struct TechLogger {
+        TechLogger(int cnt_all_tracing, int cnt_add_tracing) : cnt_all_tracing(cnt_all_tracing), cnt_add_tracing(cnt_add_tracing) {}
+        int cnt_all_tracing;
+        int cnt_add_tracing;
+    };
+    std::ostream &operator<<(std::ostream &out, const TechLogger &logger) { out << logger.cnt_all_tracing << " " << logger.cnt_add_tracing; return out; }
+    class ILogger {
+    public:
+        virtual void set_event(const std::list<Data::Edge> &edges, const std::list<Data::Tube> &tubes, TechLogger &&tech_info) = 0;
+        virtual ~ILogger() = default;
+    public:
+        bool initial = false;
+    };
+
+    class LoggerEdge final: public ILogger {
+    public:
+        LoggerEdge() = default;
+        void init(int N, std::string_view directory, bool technical_information) {
+            for (int idx = 1; idx <= N; ++idx) {
+                std::stringstream name;
+                name << directory << "/data_t=" << idx << ".log";
+                logging_.emplace_back(name.str());
+            }
+            technical_information_ = technical_information;
+            if (technical_information) {
+                std::stringstream name;
+                name << directory << "/tech.log";
+                tech_logging_.open(name.str());
+            }
+            num_epoch_ = 0;
+            initial = true;
+        }
+        void set_event(const std::list<Data::Edge> &edges, const std::list<Data::Tube> &tubes, TechLogger &&tech_info) override {
+            int i = 0;
+            double max_len = 0.;
+            for (auto &edge : edges) {
+                logging_[num_epoch_] << i << " " << edge.rays[0].get().r << "\n" << i << " " << edge.rays[1].get().r << "\n\n";
+                ++i;
+                max_len = std::max(max_len, edge.len());
+            }
+            if (technical_information_) { tech_logging_ << num_epoch_ << " " << max_len << " " << tubes.size() << " " << tech_info << "\n"; }
+            ++num_epoch_;
+        }
+        ~LoggerEdge() override {
+            for (auto &fo : logging_) {
+                fo.close();
+            }
+        }
+    private:
+        std::vector<std::ofstream> logging_;
+        std::ofstream tech_logging_;
+        int num_epoch_ = 0;
+        bool technical_information_ = false;
+    };
+
+    class LoggerN final: public ILogger {
+    public:
+        LoggerN() = default;
+        void init(int N, std::string_view directory, bool technical_information = false) {
+            for (int idx = 1; idx <= N; ++idx) {
+                std::stringstream name;
+                name << directory << "/n_t=" << idx << ".log";
+                logging_.emplace_back(name.str());
+            }
+            if (technical_information) {
+                std::stringstream name;
+                name << directory << "/tech.log";
+                tech_logging_.open(name.str());
+            }
+            num_epoch_ = 0;
+            initial = true;
+        }
+        void set_event(const std::list<Data::Edge> &edges, const std::list<Data::Tube> &tubes, TechLogger &&tech_info) override {
+            int i = 0;
+            double max_len = 0.;
+            for (auto &edge : edges) {
+                logging_[num_epoch_] << i << " " << edge.rays[0].get().n << "\n" << i << " " << edge.rays[1].get().n << "\n\n";
+                ++i;
+                max_len = std::max(max_len, edge.len());
+            }
+            if (technical_information_) { tech_logging_ << num_epoch_ << " " << max_len << " " << tubes.size() << " " << tech_info << "\n"; }
+            ++num_epoch_;
+        }
+        ~LoggerN() override {
+            for (auto &fo : logging_) {
+                fo.close();
+            }
+        }
+    private:
+        std::vector<std::ofstream> logging_;
+        std::ofstream tech_logging_;
+        int num_epoch_ = 0;
+        bool technical_information_ = false;
+    };
+}
+
+#endif //COURSEWORK_LOGGER

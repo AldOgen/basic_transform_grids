@@ -1,0 +1,90 @@
+#ifndef COURSEWORK_DIRECT_PROBLEM
+#define COURSEWORK_DIRECT_PROBLEM
+
+#include <cmath>
+#include <fstream>
+#include <iostream>
+#include <ostream>
+#include <vector>
+#include <list>
+
+#include <aiwlib/vec>
+#include "data_structures"
+#include "inverse_problem"
+#include "logger"
+
+
+namespace DirectProblem {
+    class DPSolver {
+    public:
+        DPSolver() = default;
+        void init(double h, int t_max, bool inverse_problem = false, double max_len_edge = 500., double eps_proc = .3, int rank_ip = 7) {
+            h_ = h;
+            t_max_ = t_max;
+            inverse_problem_ = inverse_problem;
+            max_len_edge_ = max_len_edge;
+            rank_ip_ = rank_ip;
+            inv_solver.init(max_len_edge * eps_proc);
+        }
+        void run(std::list<Data::Ray> &rays, std::list<Data::Tube> &tubes, const Data::IVField& v, Logger::ILogger &logging) const {
+            for (int t = 0; t < t_max_; ++t) {
+                std::cout << t << std::endl;
+                int cnt_all_tracing = 0, cnt_add_tracing = 0;
+                for (auto &ray : rays) { ray_tracing_step(ray, h_, v); ++cnt_all_tracing; }
+                if (inverse_problem_) {
+                    auto edges = Data::get_edge(tubes);
+                    for (auto &edge : edges) {
+                        if (edge.len() > max_len_edge_) {
+                            bool init_best_ray = false;
+                            std::pair<bool, Data::Ray> best_ray;
+                            best_ray.first = false;
+                            for (unsigned rank = 1; rank < rank_ip_; ++rank) {
+                                auto candidate = InverseProblem::IPProblem::get_candidate(edge, rank,rays.back().num + 1);
+                                for (auto &can_ray : candidate) {
+                                    tracing_ray(can_ray, v, t);
+                                    ++cnt_all_tracing;
+                                    ++cnt_add_tracing;
+                                }
+                                inv_solver.choosing_best_ray(candidate, edge, best_ray, init_best_ray);
+                                init_best_ray = true;
+                                if (best_ray.first) { break; }
+                            }
+                            Data::splitting_bandaging_tubes(edge, best_ray.second, rays, tubes);
+                        }
+                    }
+                }
+                if (logging.initial) {
+                    auto edges = Data::get_edge(tubes);
+                    logging.set_event(edges, tubes, Logger::TechLogger(cnt_all_tracing, cnt_add_tracing));
+                }
+            }
+        }
+        void tracing_ray(Data::Ray &ray, const Data::IVField& v, const int t_max) const {
+            for (int t = 0; t <= t_max; ++t) {
+                ray_tracing_step(ray, h_, v);
+            }
+        }
+    private:
+        static inline void ray_tracing_step(Data::Ray &ray, double h, const Data::IVField &v) {
+            double cur_v = v(ray.r); aiw::Vec<3> cur_v_grad = v.grad(ray.r);
+            aiw::Vec<3> k1r = cur_v * ray.n, k1n = (cur_v_grad * ray.n) * ray.n - cur_v_grad;
+            cur_v = v(ray.r + 0.5 * k1r * h), cur_v_grad = v.grad(ray.r + 0.5 * k1r * h);
+            aiw::Vec<3> k2r = cur_v * (ray.n + 0.5 * k1n * h), k2n = (cur_v_grad * (ray.n + 0.5 * k1n * h)) * (ray.n + 0.5 * k1n * h) - cur_v_grad;
+            cur_v = v(ray.r + 0.5 * k2r * h), cur_v_grad = v.grad(ray.r + 0.5 * k2r * h);
+            aiw::Vec<3> k3r = cur_v * (ray.n + 0.5 * k2n * h), k3n = (cur_v_grad * (ray.n + 0.5 * k2n * h)) * (ray.n + 0.5 * k2n * h) - cur_v_grad;
+            cur_v = v(ray.r + k3r * h), cur_v_grad = v.grad(ray.r + k3r * h);
+            aiw::Vec<3> k4r = cur_v * (ray.n + k3n * h), k4n = (cur_v_grad * (ray.n + k3n * h)) * (ray.n + k3n * h) - cur_v_grad;;
+            ray.r += h / 6 * (k1r + 2 * k2r + 2 * k3r + k4r); ray.n += h / 6 * (k1n + 2 * k2n + 2 * k3n + k4n);
+        }
+    private:
+        double h_;
+        int t_max_;
+        bool inverse_problem_;
+        double max_len_edge_;
+        int rank_ip_;
+        InverseProblem::IPProblem inv_solver;
+    };
+
+}
+
+#endif //COURSEWORK_DIRECT_PROBLEM
