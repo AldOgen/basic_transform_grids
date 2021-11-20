@@ -18,13 +18,14 @@ int main(int argc, char* argv[]) {
     std::list<Data::Tube> tubes;
 
     if (argc == 2 && std::strcmp(argv[1], "unittest") == 0) {
-        double v0 = 500., b = 10.;
+        double v0 = 500., b = -10;
         std::array<double, 10> norm_dn0{
             0.001, 0.00129155, 0.0016681, 0.00215443, 0.00278256, 0.00359381, 0.00464159, 0.00599484, 0.00774264, 0.01
         };
-        UnitTests::TestVField v(v0, b);
+        //UnitTests::TestVFieldConst v(v0);
+        UnitTests::TestVFieldLinear v(v0, b);
         UnitTests::LoggerGrad logging;
-        logging.init(N, "../tests/test_grad");
+        logging.init(N, "../tests/test_grad_lin");
         Data::init_rays(rank, v0, cone_rad, rays, tubes);
         UnitTests::GradTest grad_test{};
         grad_test.init(0.02, N, norm_dn0);
