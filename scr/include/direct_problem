@@ -11,6 +11,7 @@
 #include <aiwlib/vec>
 #include "data_structures"
 #include "inverse_problem"
+#include "inverse_problem_grad"
 #include "logger"
 
 
@@ -18,13 +19,15 @@ namespace DirectProblem {
     class DPSolver {
     public:
         DPSolver() = default;
-        void init(double h, int t_max, bool inverse_problem = false, double max_len_edge = 500., double eps_proc = .3, int rank_ip = 7) {
+        void init(double h, int t_max, bool inverse_problem = false, int mode = 1, double max_len_edge = 500., double eps_proc = .3, int rank_ip = 7) {
             h_ = h;
             t_max_ = t_max;
+            mode_ = mode;
             inverse_problem_ = inverse_problem;
             max_len_edge_ = max_len_edge;
             rank_ip_ = rank_ip;
             inv_solver.init(max_len_edge * eps_proc);
+            border_ = max_len_edge * eps_proc;
         }
         void run(std::list<Data::Ray> &rays, std::list<Data::Tube> &tubes, const Data::IVField& v, Logger::ILogger &logging) const {
             for (int t = 0; t < t_max_; ++t) {
@@ -32,24 +35,133 @@ namespace DirectProblem {
                 int cnt_all_tracing = 0, cnt_add_tracing = 0;
                 for (auto &ray : rays) { ray_tracing_step(ray, h_, v); ++cnt_all_tracing; }
                 if (inverse_problem_) {
-                    auto edges = Data::get_edge(tubes);
-                    for (auto &edge : edges) {
-                        if (edge.len() > max_len_edge_) {
-                            bool init_best_ray = false;
-                            std::pair<bool, Data::Ray> best_ray;
-                            best_ray.first = false;
-                            for (unsigned rank = 1; rank < rank_ip_; ++rank) {
-                                auto candidate = InverseProblem::IPProblem::get_candidate(edge, rank,rays.back().num + 1);
-                                for (auto &can_ray : candidate) {
-                                    tracing_ray(can_ray, v, t);
+                    if (mode_ == 1) {
+                        auto edges = Data::get_edge(tubes);
+                        for (auto &edge : edges) {
+                            if (edge.len() > max_len_edge_) {
+                                bool init_best_ray = false;
+                                std::pair<bool, Data::Ray> best_ray;
+                                best_ray.first = false;
+                                for (unsigned rank = 1; rank < rank_ip_; ++rank) {
+                                    auto candidate = InverseProblem::IPProblem::get_candidate(edge, rank,rays.back().num + 1);
+                                    for (auto &can_ray : candidate) {
+                                        tracing_ray(can_ray, v, t);
+                                        ++cnt_all_tracing;
+                                        ++cnt_add_tracing;
+                                    }
+                                    inv_solver.choosing_best_ray(candidate, edge, best_ray, init_best_ray);
+                                    init_best_ray = true;
+                                    if (best_ray.first) { break; }
+                                }
+                                Data::splitting_bandaging_tubes(edge, best_ray.second, rays, tubes);
+                            }
+                        }
+                    } else if (mode_ == 2) {
+                        auto edges = Data::get_edge(tubes);
+                        for (auto &edge : edges) {
+                            if (edge.len() > max_len_edge_) {
+                                aiw::Vec<3> true_r = (edge.rays[0].get().r + edge.rays[1].get().r) / 2.;
+                                aiw::Vec<3> y = InverseProblem::InverseProblemGrad::get_r_ray_removed_edge(edge, edge.tubes[0]);
+                                if (edge.tubes.size() > 1) {
+                                    y -= InverseProblem::InverseProblemGrad::get_r_ray_removed_edge(edge, edge.tubes[1]); } else { y -= true_r;
+                                }
+                                aiw::Vec<3> x = edge.rays[0].get().r - edge.rays[1].get().r;
+
+                                Data::Ray best_ray;
+                                Data::Ray pred_ray(edge.rays[0].get().st_r, (edge.rays[0].get().st_n + edge.rays[1].get().st_n) / 2, rays.back().num + 1);
+                                double min_score = -1;
+
+                                aiw::Vec<3> grad{0, 0, 0};
+                                double step = 1e-4;
+
+                                for (int cur_iter = 0; cur_iter < 500; ++cur_iter) {
+                                    if (grad.abs() > 0) { grad /= grad.abs(); }
+                                    Data::Ray cur_ray(pred_ray.st_r, pred_ray.st_n - step * grad, pred_ray.num);
+                                    tracing_ray(cur_ray, v, t);
+                                    pred_ray = cur_ray;
                                     ++cnt_all_tracing;
                                     ++cnt_add_tracing;
+
+                                    grad = InverseProblem::InverseProblemGrad::get_grad(pred_ray, true_r, x, y);
+                                    double cur_score = InverseProblem::InverseProblemGrad::get_norm_l2(pred_ray, true_r, x, y);
+
+                                    if (min_score > cur_score || min_score < 0) {
+                                        min_score = cur_score;
+                                        best_ray = pred_ray;
+                                    }
+
+                                    if (min_score < border_ || grad.abs() <= 1e-7) { break; }
                                 }
-                                inv_solver.choosing_best_ray(candidate, edge, best_ray, init_best_ray);
-                                init_best_ray = true;
-                                if (best_ray.first) { break; }
+                                Data::splitting_bandaging_tubes(edge, best_ray, rays, tubes);
                             }
-                            Data::splitting_bandaging_tubes(edge, best_ray.second, rays, tubes);
+                        }
+                    } else {
+                        auto edges = Data::get_edge(tubes);
+                        for (auto &edge : edges) {
+                            if (edge.len() > max_len_edge_) {
+                                aiw::Vec<3> true_r =
+                                        (edge.rays[0].get().r + edge.rays[1].get().r) / 2.;
+                                aiw::Vec<3> y = InverseProblem::InverseProblemGrad::get_r_ray_removed_edge(
+                                        edge, edge.tubes[0]);
+                                if (edge.tubes.size() > 1) {
+                                    y -= InverseProblem::InverseProblemGrad::get_r_ray_removed_edge(
+                                            edge, edge.tubes[1]);
+                                } else {
+                                    y -= true_r;
+                                }
+                                aiw::Vec<3> x = edge.rays[0].get().r - edge.rays[1].get().r;
+
+                                Data::Ray best_ray;
+                                Data::Ray pred_ray(edge.rays[0].get().st_r,
+                                                   (edge.rays[0].get().st_n +
+                                                    edge.rays[1].get().st_n) / 2,
+                                                   rays.back().num + 1);
+                                aiw::Vec<3> old_st_n = pred_ray.st_n;
+                                double min_score = -1;
+
+                                aiw::Vec<3> grad{0, 0, 0};
+                                aiw::Vec<3> old_grad{0, 0, 0};
+                                aiw::Vec<3> new_grad{0, 0, 0};
+                                double step = 1e-4;
+                                double momentum = 0.9;
+
+                                for (int cur_iter = 0; cur_iter < 500; ++cur_iter) {
+                                    if (grad.abs() > 0) { grad /= grad.abs(); }
+                                    Data::Ray cur_ray(pred_ray.st_r, pred_ray.st_n - step * grad + momentum * (pred_ray.st_n - old_st_n),
+                                                      pred_ray.num);
+                                    tracing_ray(cur_ray, v, t);
+                                    old_st_n = pred_ray.st_n;
+                                    pred_ray = cur_ray;
+                                    ++cnt_all_tracing;
+                                    ++cnt_add_tracing;
+
+                                    old_grad = new_grad;
+                                    grad = InverseProblem::InverseProblemGrad::get_grad(pred_ray,
+                                                                                        true_r, x,
+                                                                                        y);
+                                    new_grad = grad;
+
+                                    if (old_grad.abs() < 1e-5) {
+                                        momentum = 0.9;
+                                    } else {
+                                        momentum = new_grad.abs2() / old_grad.abs2();
+                                        if (momentum > 1.0) {
+                                           momentum = 0.9;
+                                        }
+                                    }
+
+                                    double cur_score = InverseProblem::InverseProblemGrad::get_norm_l2(
+                                            pred_ray, true_r, x, y);
+
+                                    if (min_score > cur_score || min_score < 0) {
+                                        min_score = cur_score;
+                                        best_ray = pred_ray;
+                                    }
+
+                                    if (min_score < border_ || grad.abs() <= 1e-7) { break; }
+                                }
+                                Data::splitting_bandaging_tubes(edge, best_ray, rays, tubes);
+                            }
                         }
                     }
                 }
@@ -65,23 +177,55 @@ namespace DirectProblem {
             }
         }
     private:
+//        static inline void ray_tracing_step(Data::Ray &ray, double h, const Data::IVField &v) {
+//            double cur_v = v(ray.r); aiw::Vec<3> cur_v_grad = v.grad(ray.r);
+//            aiw::Vec<3> k1r = cur_v * ray.n, k1n = (cur_v_grad * ray.n) * ray.n - cur_v_grad;
+//            cur_v = v(ray.r + 0.5 * k1r * h), cur_v_grad = v.grad(ray.r + 0.5 * k1r * h);
+//            aiw::Vec<3> k2r = cur_v * (ray.n + 0.5 * k1n * h), k2n = (cur_v_grad * (ray.n + 0.5 * k1n * h)) * (ray.n + 0.5 * k1n * h) - cur_v_grad;
+//            cur_v = v(ray.r + 0.5 * k2r * h), cur_v_grad = v.grad(ray.r + 0.5 * k2r * h);
+//            aiw::Vec<3> k3r = cur_v * (ray.n + 0.5 * k2n * h), k3n = (cur_v_grad * (ray.n + 0.5 * k2n * h)) * (ray.n + 0.5 * k2n * h) - cur_v_grad;
+//            cur_v = v(ray.r + k3r * h), cur_v_grad = v.grad(ray.r + k3r * h);
+//            aiw::Vec<3> k4r = cur_v * (ray.n + k3n * h), k4n = (cur_v_grad * (ray.n + k3n * h)) * (ray.n + k3n * h) - cur_v_grad;;
+//            ray.r += h / 6 * (k1r + 2 * k2r + 2 * k3r + k4r); ray.n += h / 6 * (k1n + 2 * k2n + 2 * k3n + k4n);
+//        }
         static inline void ray_tracing_step(Data::Ray &ray, double h, const Data::IVField &v) {
-            double cur_v = v(ray.r); aiw::Vec<3> cur_v_grad = v.grad(ray.r);
+            double cur_v = v(ray.r); aiw::Vec<3> cur_v_grad = v.grad(ray.r); aiw::Matr<3> cur_v_hess =  v.hess(ray.r);
+            aiw::Matr<3> M11 = get_M11(ray.n, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n, cur_v_hess), M22 = get_M22(ray.n, cur_v_grad);
+            //ray.P += h * (M11 * ray.P + M12 * ray.Q), ray.Q += h * (M21 * ray.P + M22 * ray.Q);
+            aiw::Matr<3>  k1P = M11 * ray.P + M12 * ray.Q, k1Q = M21 * ray.P + M22 * ray.Q;
             aiw::Vec<3> k1r = cur_v * ray.n, k1n = (cur_v_grad * ray.n) * ray.n - cur_v_grad;
-            cur_v = v(ray.r + 0.5 * k1r * h), cur_v_grad = v.grad(ray.r + 0.5 * k1r * h);
+
+            cur_v = v(ray.r + 0.5 * k1r * h), cur_v_grad = v.grad(ray.r + 0.5 * k1r * h); cur_v_hess =  v.hess(ray.r + 0.5 * k1r * h);
+            M11 = get_M11(ray.n + 0.5 * k1n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + 0.5 * k1n * h, cur_v_hess), M22 = get_M22(ray.n + 0.5 * k1n * h, cur_v_grad);
+            aiw::Matr<3> k2P = M11 * (ray.P + 0.5 * k1P * h) + M12 * (ray.Q + 0.5 * k1Q * h), k2Q = M21 * (ray.P + 0.5 * k1P * h) + M22 * (ray.Q + 0.5 * k1Q * h);
             aiw::Vec<3> k2r = cur_v * (ray.n + 0.5 * k1n * h), k2n = (cur_v_grad * (ray.n + 0.5 * k1n * h)) * (ray.n + 0.5 * k1n * h) - cur_v_grad;
-            cur_v = v(ray.r + 0.5 * k2r * h), cur_v_grad = v.grad(ray.r + 0.5 * k2r * h);
+
+            cur_v = v(ray.r + 0.5 * k2r * h), cur_v_grad = v.grad(ray.r + 0.5 * k2r * h); cur_v_hess =  v.hess(ray.r + 0.5 * k2r * h);
+            M11 = get_M11(ray.n + 0.5 * k2n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + 0.5 * k2n * h, cur_v_hess), M22 = get_M22(ray.n + 0.5 * k2n * h, cur_v_grad);
+            aiw::Matr<3> k3P = M11 * (ray.P + 0.5 * k2P * h) + M12 * (ray.Q + 0.5 * k2Q * h), k3Q = M21 * (ray.P + 0.5 * k2P * h) + M22 * (ray.Q + 0.5 * k2Q * h);
             aiw::Vec<3> k3r = cur_v * (ray.n + 0.5 * k2n * h), k3n = (cur_v_grad * (ray.n + 0.5 * k2n * h)) * (ray.n + 0.5 * k2n * h) - cur_v_grad;
-            cur_v = v(ray.r + k3r * h), cur_v_grad = v.grad(ray.r + k3r * h);
-            aiw::Vec<3> k4r = cur_v * (ray.n + k3n * h), k4n = (cur_v_grad * (ray.n + k3n * h)) * (ray.n + k3n * h) - cur_v_grad;;
+
+            cur_v = v(ray.r + k3r * h), cur_v_grad = v.grad(ray.r + k3r * h); cur_v_hess =  v.hess(ray.r + k3r * h);
+            M11 = get_M11(ray.n + k3n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + k3n * h, cur_v_hess), M22 = get_M22(ray.n + k3n * h, cur_v_grad);
+            aiw::Matr<3> k4P = M11 * (ray.P + k3P * h) + M12 * (ray.Q + k3Q * h), k4Q = M21 * (ray.P + k3P * h) + M22 * (ray.Q + k3Q * h);
+            aiw::Vec<3> k4r = cur_v * (ray.n + k3n * h), k4n = (cur_v_grad * (ray.n + k3n * h)) * (ray.n + k3n * h) - cur_v_grad;
+
+            ray.P += h / 6 * (k1P + 2. * k2P + 2. * k3P + k4P); ray.Q += h / 6 * (k1Q + 2. * k2Q + 2. * k3Q + k4Q);
             ray.r += h / 6 * (k1r + 2 * k2r + 2 * k3r + k4r); ray.n += h / 6 * (k1n + 2 * k2n + 2 * k3n + k4n);
         }
+        static inline aiw::Matr<3> get_M11(const aiw::Vec<3> &n, const aiw::Vec<3> &v_gradr) { return n ^ v_gradr; }
+        static inline aiw::Matr<3> get_M12(const double vr) { return aiw::Matr<3>{vr}; }
+        static inline aiw::Matr<3> get_M21(const aiw::Vec<3> &n, const aiw::Matr<3> &v_hessr) { return ((n ^ n) - aiw::Matr<3>{1.}) * v_hessr; }
+        static inline aiw::Matr<3> get_M22(const aiw::Vec<3> &n, const aiw::Vec<3> &v_gradr) { return (n ^ v_gradr) + aiw::Matr<3>{(n * v_gradr)}; }
+
     private:
         double h_;
         int t_max_;
+        int mode_;
         bool inverse_problem_;
         double max_len_edge_;
         int rank_ip_;
+        double border_;
         InverseProblem::IPProblem inv_solver;
     };
 

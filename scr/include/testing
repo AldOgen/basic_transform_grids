@@ -21,9 +21,7 @@ namespace Testing {
         }
         [[nodiscard]] aiw::Matr<3> hess(const aiw::Vec<3> &r) const final {
             double sigma2 = sigma * sigma;
-            aiw::Matr<3> hess;
-            hess.fill();
-            return hess;
+            return delta_v / sigma2 * std::exp(-(r - r0).abs2() / (2 * sigma2)) * (aiw::Matr<3>{1.} - (((r - r0) / sigma) ^ ((r - r0) / sigma)));
         }
     private:
         aiw::Vec<3> r0;

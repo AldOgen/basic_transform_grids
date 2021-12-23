@@ -6,6 +6,7 @@
 #include <aiwlib/vec>
 
 #include "../include/data_structures"
+#include "./logger"
 
 namespace UnitTests {
     class TestVFieldConst final: public Data::IVField {
@@ -39,37 +40,6 @@ namespace UnitTests {
         double a, b;
     };
 
-    class LoggerGrad {
-    public:
-        LoggerGrad() = default;
-        void init(int N, std::string_view directory) {
-            for (int idx = 1; idx <= N; ++idx) {
-                std::stringstream name;
-                name << directory << "/err_t=" << idx << ".log";
-                logging_.emplace_back(name.str());
-            }
-            num_epoch_ = 0;
-            initial = true;
-        }
-        void set_event(const std::vector<std::vector<double>> &errors) {
-            int i = 0;
-            for (auto &errs : errors) {
-                logging_[num_epoch_] << i;
-                for (auto err : errs) { logging_[num_epoch_] << " " << err; }
-                logging_[num_epoch_] << "\n";
-                ++i;
-            }
-            ++num_epoch_;
-        }
-        ~LoggerGrad() {
-            for (auto &fo : logging_) { fo.close(); }
-        }
-    private:
-        std::vector<std::ofstream> logging_;
-        int num_epoch_ = 0;
-        bool initial = false;
-    };
-
     aiw::Vec<3> get_orthogonal_vector(const aiw::Vec<3> &vec) {
         double first_coord = vec[0] != 0.0 ? -vec[0]: 1.;
         aiw::Vec<3> ort_vec {first_coord, vec[1], vec[2]};
@@ -85,7 +55,7 @@ namespace UnitTests {
             t_max_ = t_max;
             norm_dn0_ = norm_dn0;
         }
-        void run(std::list<Data::Ray> &rays, const Data::IVField &v, LoggerGrad &logging) {
+        void run(std::list<Data::Ray> &rays, const Data::IVField &v, IUnitLogger &logging) {
             rays_for_test_ = std::move(get_offset_rays(rays));
             for (int t = 0; t < t_max_; ++t) {
                 std::cout << t << std::endl;
@@ -96,33 +66,33 @@ namespace UnitTests {
                     }
                     errors.push_back(get_calc_errors(vec_rays));
                 }
-                logging.set_event(errors);
+                logging.set_event(rays, errors);
             }
         }
     private:
         static inline void ray_tracing_step(Data::Ray &ray, double h, const Data::IVField &v) {
             double cur_v = v(ray.r); aiw::Vec<3> cur_v_grad = v.grad(ray.r); aiw::Matr<3> cur_v_hess =  v.hess(ray.r);
             aiw::Matr<3> M11 = get_M11(ray.n, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n, cur_v_hess), M22 = get_M22(ray.n, cur_v_grad);
-            ray.P += h * (M11 * ray.P + M12 * ray.Q), ray.Q += h * (M21 * ray.P + M22 * ray.Q);
-            //aiw::Matr<3>  k1P = M11 * ray.P + M12 * ray.Q, k1Q = M21 * ray.P + M22 * ray.Q;
+            //ray.P += h * (M11 * ray.P + M12 * ray.Q), ray.Q += h * (M21 * ray.P + M22 * ray.Q);
+            aiw::Matr<3>  k1P = M11 * ray.P + M12 * ray.Q, k1Q = M21 * ray.P + M22 * ray.Q;
             aiw::Vec<3> k1r = cur_v * ray.n, k1n = (cur_v_grad * ray.n) * ray.n - cur_v_grad;
 
             cur_v = v(ray.r + 0.5 * k1r * h), cur_v_grad = v.grad(ray.r + 0.5 * k1r * h); cur_v_hess =  v.hess(ray.r + 0.5 * k1r * h);
-            //M11 = get_M11(ray.n + 0.5 * k1n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + 0.5 * k1n * h, cur_v_hess), M22 = get_M22(ray.n + 0.5 * k1n * h, cur_v_grad);
-            //aiw::Matr<3> k2P = M11 * (ray.P + 0.5 * k1P * h) + M12 * (ray.Q + 0.5 * k1Q * h), k2Q = M21 * (ray.P + 0.5 * k1P * h) + M22 * (ray.Q + 0.5 * k1Q * h);
+            M11 = get_M11(ray.n + 0.5 * k1n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + 0.5 * k1n * h, cur_v_hess), M22 = get_M22(ray.n + 0.5 * k1n * h, cur_v_grad);
+            aiw::Matr<3> k2P = M11 * (ray.P + 0.5 * k1P * h) + M12 * (ray.Q + 0.5 * k1Q * h), k2Q = M21 * (ray.P + 0.5 * k1P * h) + M22 * (ray.Q + 0.5 * k1Q * h);
             aiw::Vec<3> k2r = cur_v * (ray.n + 0.5 * k1n * h), k2n = (cur_v_grad * (ray.n + 0.5 * k1n * h)) * (ray.n + 0.5 * k1n * h) - cur_v_grad;
 
             cur_v = v(ray.r + 0.5 * k2r * h), cur_v_grad = v.grad(ray.r + 0.5 * k2r * h); cur_v_hess =  v.hess(ray.r + 0.5 * k2r * h);
-            //M11 = get_M11(ray.n + 0.5 * k2n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + 0.5 * k2n * h, cur_v_hess), M22 = get_M22(ray.n + 0.5 * k2n * h, cur_v_grad);
-            //aiw::Matr<3> k3P = M11 * (ray.P + 0.5 * k2P * h) + M12 * (ray.Q + 0.5 * k2Q * h), k3Q = M21 * (ray.P + 0.5 * k2P * h) + M22 * (ray.Q + 0.5 * k2Q * h);
+            M11 = get_M11(ray.n + 0.5 * k2n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + 0.5 * k2n * h, cur_v_hess), M22 = get_M22(ray.n + 0.5 * k2n * h, cur_v_grad);
+            aiw::Matr<3> k3P = M11 * (ray.P + 0.5 * k2P * h) + M12 * (ray.Q + 0.5 * k2Q * h), k3Q = M21 * (ray.P + 0.5 * k2P * h) + M22 * (ray.Q + 0.5 * k2Q * h);
             aiw::Vec<3> k3r = cur_v * (ray.n + 0.5 * k2n * h), k3n = (cur_v_grad * (ray.n + 0.5 * k2n * h)) * (ray.n + 0.5 * k2n * h) - cur_v_grad;
 
             cur_v = v(ray.r + k3r * h), cur_v_grad = v.grad(ray.r + k3r * h); cur_v_hess =  v.hess(ray.r + k3r * h);
-            //M11 = get_M11(ray.n + k3n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + k3n * h, cur_v_hess), M22 = get_M22(ray.n + k3n * h, cur_v_grad);
-            //aiw::Matr<3> k4P = M11 * (ray.P + k3P * h) + M12 * (ray.Q + k3Q * h), k4Q = M21 * (ray.P + k3P * h) + M22 * (ray.Q + k3Q * h);
+            M11 = get_M11(ray.n + k3n * h, cur_v_grad), M12 = get_M12(cur_v), M21 = get_M21(ray.n + k3n * h, cur_v_hess), M22 = get_M22(ray.n + k3n * h, cur_v_grad);
+            aiw::Matr<3> k4P = M11 * (ray.P + k3P * h) + M12 * (ray.Q + k3Q * h), k4Q = M21 * (ray.P + k3P * h) + M22 * (ray.Q + k3Q * h);
             aiw::Vec<3> k4r = cur_v * (ray.n + k3n * h), k4n = (cur_v_grad * (ray.n + k3n * h)) * (ray.n + k3n * h) - cur_v_grad;
 
-            //ray.P += h / 6 * (k1P + 2. * k2P + 2. * k3P + k4P); ray.Q += h / 6 * (k1Q + 2. * k2Q + 2. * k3Q + k4Q);
+            ray.P += h / 6 * (k1P + 2. * k2P + 2. * k3P + k4P); ray.Q += h / 6 * (k1Q + 2. * k2Q + 2. * k3Q + k4Q);
             ray.r += h / 6 * (k1r + 2 * k2r + 2 * k3r + k4r); ray.n += h / 6 * (k1n + 2 * k2n + 2 * k3n + k4n);
         }
         static inline aiw::Matr<3> get_M11(const aiw::Vec<3> &n, const aiw::Vec<3> &v_gradr) { return n ^ v_gradr; }
@@ -146,7 +116,7 @@ namespace UnitTests {
             auto ort_n = get_orthogonal_vector(rays[0].st_n);
             for (int i = 1; i < N + 1; ++i) {
                 auto l = rays[0].r + rays[0].P * (norm_dn0_[i - 1] * ort_n);
-                errors[i - 1] = (rays[i].r - (rays[0].r + rays[0].P * (norm_dn0_[i - 1] * ort_n))).abs2();
+                errors[i - 1] = (rays[i].r - (rays[0].r + rays[0].P * (norm_dn0_[i - 1] * ort_n))).abs();
             }
             return errors;
         }

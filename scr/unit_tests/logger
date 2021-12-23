@@ -1,0 +1,86 @@
+#ifndef MAIN_CPP_LOGGER_
+#define MAIN_CPP_LOGGER_
+#include <string>
+#include <ostream>
+#include <vector>
+#include <list>
+
+#include <aiwlib/matr>
+#include <aiwlib/vec>
+
+#include "../include/data_structures"
+
+namespace UnitTests {
+    class IUnitLogger {
+    public:
+        virtual void set_event(const std::list<Data::Ray> &rays, const std::vector<std::vector<double>> &errors) = 0;
+        virtual ~IUnitLogger() = default;
+    public:
+        bool initial = false;
+    };
+
+    class LoggerGrad final: public IUnitLogger {
+    public:
+        LoggerGrad() = default;
+        void init(int N, std::string_view directory) {
+            for (int idx = 1; idx <= N; ++idx) {
+                std::stringstream name;
+                name << directory << "/err_t=" << idx << ".log";
+                logging_.emplace_back(name.str());
+            }
+            num_epoch_ = 0;
+            initial = true;
+        }
+        void set_event(const std::list<Data::Ray> &rays, const std::vector<std::vector<double>> &errors) override {
+            size_t idx_errs = 0;
+            for (auto &ray : rays) {
+                logging_[num_epoch_] << idx_errs;
+                for (auto err : errors[idx_errs]) { logging_[num_epoch_] << " " << err; }
+                logging_[num_epoch_] << "\n";
+                ++idx_errs;
+            }
+            ++num_epoch_;
+        }
+        ~LoggerGrad() override {
+            for (auto &fo : logging_) { fo.close(); }
+        }
+    private:
+        std::vector<std::ofstream> logging_;
+        int num_epoch_ = 0;
+    };
+
+    class LoggerSphereMaxGrad final: public IUnitLogger {
+    public:
+        LoggerSphereMaxGrad() = default;
+        void init(int N, std::string_view directory) {
+            for (int idx = 1; idx <= N; ++idx) {
+                std::stringstream name;
+                name << directory << "/err_t=" << idx << ".log";
+                logging_.emplace_back(name.str());
+            }
+            num_epoch_ = 0;
+            initial = true;
+        }
+        void set_event(const std::list<Data::Ray> &rays, const std::vector<std::vector<double>> &errors) override {
+            size_t idx_errs = 0;
+            for (auto &ray : rays) {
+                logging_[num_epoch_] << ray.st_n;
+                logging_[num_epoch_] << " " << *std::max_element(errors[idx_errs].begin(), errors[idx_errs].end());
+                logging_[num_epoch_] << "\n";
+                ++idx_errs;
+            }
+            ++num_epoch_;
+        }
+        ~LoggerSphereMaxGrad() override {
+            for (auto &fo : logging_) { fo.close(); }
+        }
+    private:
+        std::vector<std::ofstream> logging_;
+        int num_epoch_ = 0;
+    };
+
+}
+
+
+
+#endif //MAIN_CPP_LOGGER_

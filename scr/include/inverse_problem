@@ -14,7 +14,7 @@ namespace InverseProblem {
             bool first_tube = true;
             for (auto &tube : edge.tubes) {
                 aiw::Vec<3> st_r = edge.rays[0].get().st_r;
-                aiw::Vec<3> n_a = get_st_p_ray_removed_edge(edge, tube), n_b = edge.rays[0].get().st_n, n_c = edge.rays[1].get().st_n;
+                aiw::Vec<3> n_a = get_st_n_ray_removed_edge(edge, tube), n_b = edge.rays[0].get().st_n, n_c = edge.rays[1].get().st_n;
                 aiw::Vec<3> step_ab = (n_b - n_a) / (static_cast<int>(cnt_step)), step_ac = (n_c - n_a) / (static_cast<int>(cnt_step));
                 aiw::Vec<3> nnt_ab = n_a, nnt_ac = n_a;
                 unsigned n = first_tube ? (1u << rank) + 1 : 1u << rank;
@@ -58,7 +58,7 @@ namespace InverseProblem {
             }
         }
     private:
-        static aiw::Vec<3> get_st_p_ray_removed_edge(const Data::Edge &edge, const Data::Tube &tube) {
+        static aiw::Vec<3> get_st_n_ray_removed_edge(const Data::Edge &edge, const Data::Tube &tube) {
             aiw::Vec<3> st_n;
             for (auto &ray : tube.rays) { if (ray.get().num != edge.rays[0].get().num && ray.get().num != edge.rays[1].get().num) { st_n = ray.get().st_n; } }
             return st_n;

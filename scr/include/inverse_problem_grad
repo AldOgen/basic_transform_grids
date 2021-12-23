@@ -1,0 +1,29 @@
+#ifndef MAIN_CPP_INVERSE_PROBLEM_GRAD_H
+#define MAIN_CPP_INVERSE_PROBLEM_GRAD_H
+
+#include <numeric>
+#include <aiwlib/vec>
+#include "data_structures"
+
+namespace InverseProblem {
+    class InverseProblemGrad {
+    public:
+        InverseProblemGrad() = default;
+    public:
+        static double get_norm_l2(const Data::Ray& ray, aiw::Vec<3> true_r, aiw::Vec<3> x, aiw::Vec<3> y) {
+            return std::pow(((ray.r - true_r) * x), 2) / x.abs2() + std::pow(((ray.r - true_r) * y), 2) / y.abs2();
+        }
+
+        static aiw::Vec<3> get_grad(const Data::Ray& ray, aiw::Vec<3> true_r, aiw::Vec<3> x, aiw::Vec<3> y) {
+            return ray.P.T() * (2 * ((((ray.r - true_r) * x) / x.abs2()) * x + (((ray.r - true_r) * y) / y.abs2()) * y));
+        }
+
+        static aiw::Vec<3> get_r_ray_removed_edge(const Data::Edge &edge, const Data::Tube &tube) {
+            aiw::Vec<3> r;
+            for (auto &ray : tube.rays) { if (ray.get().num != edge.rays[0].get().num && ray.get().num != edge.rays[1].get().num) { r = ray.get().r; } }
+            return r;
+        }
+    };
+}
+
+#endif //MAIN_CPP_INVERSE_PROBLEM_GRAD_H

@@ -16,5 +16,5 @@ add_executable(coursework
         ${PROJECT_SOURCE_DIR}/scr/include/logger
         ${PROJECT_SOURCE_DIR}/scr/include/testing
         ${PROJECT_SOURCE_DIR}/scr/unit_tests/grad_test
-)
+        ${PROJECT_SOURCE_DIR}/scr/unit_tests/logger scr/include/inverse_problem_grad)
 target_link_libraries(coursework ${CMAKE_DL_LIBS} ${LIBAIW})
